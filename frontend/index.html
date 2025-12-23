@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Gozon Shop</title>
+    <style>
+        body { font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .card { border: 1px solid #ccc; padding: 15px; margin-bottom: 20px; border-radius: 8px; }
+        input { padding: 8px; margin: 5px 0; width: 200px; }
+        button { padding: 8px 15px; background: #007bff; color: white; border: none; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        #logs { background: #f4f4f4; padding: 10px; border: 1px solid #ddd; height: 200px; overflow-y: scroll; white-space: pre-wrap;}
+    </style>
+</head>
+<body>
+    <h1>Gozon Shop</h1>
+
+    <div class="card">
+        <h3>1. Регистрация / Пополнение баланса</h3>
+        <input type="number" id="regUserId" placeholder="User ID (например, 1)">
+        <input type="number" id="regAmount" placeholder="Сумма (например, 1000)">
+        <button onclick="addBalance()">Пополнить</button>
+        <button onclick="checkBalance()">Проверить баланс</button>
+        <p id="balanceInfo">Баланс: -</p>
+    </div>
+
+    <div class="card">
+        <h3>2. Создать заказ</h3>
+        <input type="number" id="orderUserId" placeholder="User ID">
+        <input type="text" id="orderItem" placeholder="Товар (например, iPhone)">
+        <input type="number" id="orderPrice" placeholder="Цена">
+        <button onclick="createOrder()">Купить</button>
+    </div>
+
+    <h3>Лог операций:</h3>
+    <div id="logs"></div>
+
+    <script>
+        const GATEWAY_URL = 'http://localhost:8080';
+
+        function log(msg) {
+            const el = document.getElementById('logs');
+            el.innerText = `> ${msg}\n` + el.innerText;
+        }
+
+        async function addBalance() {
+            const userId = document.getElementById('regUserId').value;
+            const amount = document.getElementById('regAmount').value;
+            try {
+                const res = await fetch(`${GATEWAY_URL}/accounts/`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({user_id: parseInt(userId), balance: parseInt(amount)})
+                });
+                log(`Пополнение User ${userId}: ${res.status === 200 ? 'OK' : 'Error'}`);
+            } catch (e) { log('Ошибка сети'); }
+        }
+
+        async function checkBalance() {
+            const userId = document.getElementById('regUserId').value;
+            try {
+                const res = await fetch(`${GATEWAY_URL}/accounts/${userId}`);
+                const data = await res.json();
+                document.getElementById('balanceInfo').innerText = `Баланс: ${data.balance || 0}`;
+                log(`Проверка баланса User ${userId}: ${data.balance}`);
+            } catch (e) { log('Пользователь не найден или ошибка'); }
+        }
+
+        async function createOrder() {
+            const userId = document.getElementById('orderUserId').value;
+            const item = document.getElementById('orderItem').value;
+            const price = document.getElementById('orderPrice').value;
+            
+            try {
+                const res = await fetch(`${GATEWAY_URL}/orders/`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({user_id: parseInt(userId), item: item, price: parseInt(price)})
+                });
+                const data = await res.json();
+                log(`Заказ создан: ID=${data.id}, Status=${data.status}. Ждем оплату...`);
+                
+                // Проверяем баланс через 2 секунды, чтобы увидеть списание
+                setTimeout(checkBalance, 2000);
+            } catch (e) { log('Ошибка создания заказа'); }
+        }
+    </script>
+</body>
+</html>

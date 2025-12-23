@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: gozon_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  orders:
+    build: ./orders
+    depends_on:
+      - postgres
+      - rabbitmq
+    environment:
+      DATABASE_URL: postgresql://user:password@postgres/gozon_db
+    ports:
+      - "8001:8000"
+
+  payments:
+    build: ./payments
+    depends_on:
+      - postgres
+      - rabbitmq
+    environment:
+      DATABASE_URL: postgresql://user:password@postgres/gozon_db
+    ports:
+      - "8002:8000"
+
+  gateway:
+    build: ./gateway
+    ports:
+      - "8080:8000"
+    depends_on:
+      - orders
+      - payments
+
+  frontend:
+    image: nginx:alpine
+    volumes:
+      - ./frontend:/usr/share/nginx/html
+    ports:
+      - "80:80"
+    depends_on:
+      - gateway
+
+volumes:
+  db_data:
