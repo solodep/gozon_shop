@@ -31,14 +31,7 @@
 * **Atomic Updates:** Списание средств происходит с использованием блокировки `SELECT ... FOR UPDATE` или атомарных операций БД для предотвращения состояния гонки (Race Condition) при параллельных запросах.
 * **Результат обработки:** После попытки оплаты сервис публикует событие успеха или неудачи обратно в очередь.
 
-## Структура проекта
 
-gozon_shop/
-├── docker-compose.yml  # Инфраструктура (БД, Брокер, Сервисы)
-├── gateway/            # API Gateway (FastAPI)
-├── orders/             # Сервис заказов (FastAPI + Outbox)
-├── payments/           # Сервис платежей (FastAPI + Inbox + Idempotency)
-└── frontend/           # Статический веб-интерфейс (Nginx)
 
 ## Инструкция по запуску
 Сборка и запуск контейнеров: docker compose up -d --build
@@ -64,3 +57,13 @@ POST /orders/
 
 
 Body: {"user_id": 1, "item": "Laptop", "price": 1000}
+
+## Структура проекта
+
+```text
+gozon_shop/
+├── docker-compose.yml  # Инфраструктура (БД, Брокер, Сервисы)
+├── gateway/            # API Gateway (FastAPI)
+├── orders/             # Сервис заказов (FastAPI + Outbox)
+├── payments/           # Сервис платежей (FastAPI + Inbox + Idempotency)
+└── frontend/           # Статический веб-интерфейс (Nginx)
