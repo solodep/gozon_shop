@@ -2,7 +2,7 @@ import json
 import time
 import threading
 import pika
-from fastapi import FastAPI, HTTPException, Body
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import create_engine, Column, Integer, String, Boolean
 from sqlalchemy.orm import sessionmaker, declarative_base
@@ -22,14 +22,15 @@ class Account(Base):
     balance = Column(Integer, default=0)
 
 class Inbox(Base):
-    __tablename__ = "inbox"
+    __tablename__ = "payments_inbox" 
     message_id = Column(String, primary_key=True)
 
 class Outbox(Base):
-    __tablename__ = "outbox"
+    __tablename__ = "payments_outbox"
     id = Column(Integer, primary_key=True, index=True)
     payload = Column(String)
     published = Column(Boolean, default=False)
+
 def init_db():
     retries = 5
     while retries > 0:
@@ -48,55 +49,40 @@ def get_rabbit_connection():
     params = pika.ConnectionParameters(host=RABBITMQ_HOST)
     return pika.BlockingConnection(params)
 
-def publish_event_to_broker(event_data: dict):
-    connection = None
-    try:
-        connection = get_rabbit_connection()
-        channel = connection.channel()
-        channel.queue_declare(queue=PUBLISH_QUEUE, durable=True)
-        channel.basic_publish(
-            exchange='',
-            routing_key=PUBLISH_QUEUE,
-            body=json.dumps(event_data),
-            properties=pika.BasicProperties(delivery_mode=2)
-        )
-    except Exception as e:
-        print(f"Publish error: {e}")
-        raise e
-    finally:
-        if connection:
-            connection.close()
-
-
-
 def start_outbox_relay():
-
     while True:
         db = SessionLocal()
         try:
             events = db.query(Outbox).filter(Outbox.published == False).limit(10).all()
-            
             if not events:
                 time.sleep(2)
                 continue
 
+            connection = get_rabbit_connection()
+            channel = connection.channel()
+            channel.queue_declare(queue=PUBLISH_QUEUE, durable=True)
+
             for event in events:
                 try:
                     data = json.loads(event.payload)
-                    publish_event_to_broker(data)
-                    
+                    channel.basic_publish(
+                        exchange='',
+                        routing_key=PUBLISH_QUEUE,
+                        body=json.dumps(data),
+                        properties=pika.BasicProperties(delivery_mode=2)
+                    )
                     event.published = True
                     db.commit()
-                    print(f"Relay: Event {event.id} sent successfully.")
+                    print(f"Sent result for {data.get('order_id')}")
                 except Exception as e:
-                    print(f"Relay: Failed to send event {event.id}: {e}")
-                    
+                    print(f"Relay Error: {e}")
+            
+            connection.close()
         except Exception as e:
-            print(f"Relay loop error: {e}")
+            print(f"Relay Loop error: {e}")
             time.sleep(5)
         finally:
             db.close()
-
 
 def process_payment_logic(ch, method, properties, body):
     db = SessionLocal()
@@ -113,31 +99,26 @@ def process_payment_logic(ch, method, properties, body):
             return
 
         user_acc = db.query(Account).filter_by(user_id=user_id).with_for_update().first()
-
         payment_status = "FAILED"
+        
         if user_acc and user_acc.balance >= price:
             user_acc.balance -= price
             payment_status = "PAID"
         
-        inbox_entry = Inbox(message_id=message_id)
-        db.add(inbox_entry)
+        db.add(Inbox(message_id=message_id))
         
         result_event = {
-            "event": "PAYMENT_RESULT",
             "order_id": order_id,
             "status": payment_status
         }
-        
-        outbox_entry = Outbox(payload=json.dumps(result_event))
-        db.add(outbox_entry)
+        db.add(Outbox(payload=json.dumps(result_event)))
         
         db.commit()
-        
-
         ch.basic_ack(delivery_tag=method.delivery_tag)
+        print(f"Processed order {order_id}: {payment_status}")
 
     except Exception as e:
-        print(f"Error processing: {e}")
+        print(f"Consumer Error: {e}")
         db.rollback()
         ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
     finally:
@@ -153,18 +134,13 @@ def start_consumer():
             channel.basic_consume(queue=CONSUME_QUEUE, on_message_callback=process_payment_logic)
             print("Consumer started...")
             channel.start_consuming()
-        except Exception as e:
-            print(f"Consumer connection failed: {e}")
+        except Exception:
             time.sleep(5)
 
 @app.on_event("startup")
 def startup_event():
-    t_consumer = threading.Thread(target=start_consumer, daemon=True)
-    t_consumer.start()
-    
-    t_relay = threading.Thread(target=start_outbox_relay, daemon=True)
-    t_relay.start()
-
+    threading.Thread(target=start_consumer, daemon=True).start()
+    threading.Thread(target=start_outbox_relay, daemon=True).start()
 
 class AccountCreate(BaseModel):
     user_id: int
