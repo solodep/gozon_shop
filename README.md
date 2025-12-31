@@ -35,7 +35,7 @@
 
 ## Инструкция по запуску
 Сборка и запуск контейнеров: docker compose up -d --build
-Доступ к приложению: http://localhost
+Доступ к приложению: http://localhost (фронтенд) 
 
 ## Описание API
 
@@ -67,3 +67,4 @@ gozon_shop/
 ├── orders/             # Сервис заказов (FastAPI + Outbox)
 ├── payments/           # Сервис платежей (FastAPI + Inbox + Idempotency)
 └── frontend/           # Статический веб-интерфейс (Nginx)
+
